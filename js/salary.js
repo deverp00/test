@@ -147,14 +147,22 @@ function showAddSalaryModal() {
       return;
     }
 
+    // Ensure teacher has an Employee ID
+    let employeeId;
+    try {
+      employeeId = await window.ensureEmployeeId(teacher);
+    } catch (err) {
+      console.error('Failed to ensure Employee ID:', err);
+      window.showToast('Failed to ensure Employee ID for teacher. Please try again.', 'error');
+      return;
+    }
+
     // Duplicate check using Employee ID
-    const existing = window.SALARY_RECORDS.find(s => s.employeeId === teacher.employeeId && s.month === month && s.year === year);
+    const existing = window.SALARY_RECORDS.find(s => s.employeeId === employeeId && s.month === month && s.year === year);
     if (existing) {
       window.showToast('This teacher already has a salary record for this month/year.', 'error');
       return;
     }
-
-    const employeeId = teacher.employeeId;
 
     let receiptNo = '';
     if (status === 'paid') {
@@ -162,7 +170,7 @@ function showAddSalaryModal() {
     }
 
     const newSalary = {
-      employeeId,
+      employeeId: employeeId,
       employeeName: teacher.name,
       role: teacher.role,
       month,
@@ -186,7 +194,7 @@ function showAddSalaryModal() {
       window.closeModal();
     } catch (error) {
       console.error('Add salary error:', error);
-      window.showToast('Failed to add salary record. Please try again.', 'error');
+      window.showToast(`Failed to add salary: ${error.message || 'Unknown error'}`, 'error');
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = 'Add Salary'; }
     }

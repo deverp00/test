@@ -4,8 +4,13 @@
 
 import { createData, deleteData } from './firebase.js';
 
+// ============================================================
+// RENDER SALARY TABLE + STATS
+// ============================================================
+
 function renderSalary(statusFilter = 'all', search = '') {
   const salaryRecords = window.SALARY_RECORDS || [];
+
   const totalPaid = salaryRecords.filter(s => s.status === 'paid').reduce((sum, s) => sum + (s.amount || 0), 0);
   const totalPending = salaryRecords.filter(s => s.status === 'pending').reduce((sum, s) => sum + (s.amount || 0), 0);
   const totalRecords = salaryRecords.length;
@@ -17,7 +22,9 @@ function renderSalary(statusFilter = 'all', search = '') {
   `;
 
   let list = salaryRecords;
-  if (statusFilter !== 'all') list = list.filter(s => s.status === statusFilter);
+  if (statusFilter !== 'all') {
+    list = list.filter(s => s.status === statusFilter);
+  }
   if (search.trim()) {
     const q = search.trim().toLowerCase();
     list = list.filter(s => s.employeeName.toLowerCase().includes(q));
@@ -51,16 +58,24 @@ function renderSalary(statusFilter = 'all', search = '') {
     </tr>
   `).join('');
 
-  // deleteSalary is called via onclick
+  // Attach event listeners for delete buttons (already using onclick)
 }
+
+// ============================================================
+// GET ELIGIBLE TEACHERS FOR SELECTED MONTH/YEAR
+// ============================================================
 
 function getEligibleTeachers(month, year) {
   const allTeachers = window.TEACHERS || [];
   const paidEmployeeIds = window.SALARY_RECORDS
     .filter(s => s.month === month && s.year === year)
     .map(s => s.employeeId);
-  return allTeachers.filter(t => !paidEmployeeIds.includes(t.id)); // use teacher.id
+  return allTeachers.filter(t => !paidEmployeeIds.includes(t.employeeId));
 }
+
+// ============================================================
+// ADD SALARY (WITH ELIGIBILITY, EMPLOYEE ID)
+// ============================================================
 
 function showAddSalaryModal() {
   const now = new Date();
@@ -132,24 +147,25 @@ function showAddSalaryModal() {
       return;
     }
 
-    // Use teacher.id as employeeId (stable and unique)
-    const employeeId = teacher.id;
+    // Ensure Employee ID exists (fallback to Firebase ID if missing)
+    const employeeId = teacher.employeeId || teacher.id;
 
-    // Duplicate check using employeeId (teacher.id)
+    // Duplicate check using Employee ID
     const existing = window.SALARY_RECORDS.find(s => s.employeeId === employeeId && s.month === month && s.year === year);
     if (existing) {
       window.showToast('This teacher already has a salary record for this month/year.', 'error');
       return;
     }
 
+    // Build the record – only fields allowed by Firebase rules
     const newSalary = {
-      employeeId: employeeId,         // Firebase teacher ID
+      employeeId: employeeId,
       employeeName: teacher.name,
       role: teacher.role,
-      month,
-      year,
-      amount,
-      status,
+      month: month,
+      year: year,
+      amount: amount,
+      status: status,
       paymentMethod: status === 'paid' ? paymentMethod : ''
     };
 
@@ -165,7 +181,7 @@ function showAddSalaryModal() {
       window.closeModal();
     } catch (error) {
       console.error('Add salary error:', error);
-      window.showToast(`Failed to add salary: ${error.message || 'Unknown error'}`, 'error');
+      window.showToast('Failed to add salary record. Please check console for details.', 'error');
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = 'Add Salary'; }
     }
@@ -193,6 +209,10 @@ function showAddSalaryModal() {
   }, 50);
 }
 
+// ============================================================
+// DELETE SALARY
+// ============================================================
+
 async function deleteSalary(id) {
   if (!confirm('Are you sure you want to delete this salary record?')) return;
 
@@ -213,17 +233,34 @@ async function deleteSalary(id) {
   }
 }
 
+// ============================================================
+// EVENT BINDINGS
+// ============================================================
+
 document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('addSalaryBtn')?.addEventListener('click', showAddSalaryModal);
-  document.getElementById('salarySearch')?.addEventListener('input', (e) => {
-    const status = document.getElementById('salaryFilter')?.value || 'all';
-    renderSalary(status, e.target.value);
-  });
-  document.getElementById('salaryFilter')?.addEventListener('change', (e) => {
-    const search = document.getElementById('salarySearch')?.value || '';
-    renderSalary(e.target.value, search);
-  });
+  const addBtn = document.getElementById('addSalaryBtn');
+  if (addBtn) addBtn.addEventListener('click', showAddSalaryModal);
+
+  const searchInput = document.getElementById('salarySearch');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      const status = document.getElementById('salaryFilter')?.value || 'all';
+      renderSalary(status, e.target.value);
+    });
+  }
+
+  const filterSelect = document.getElementById('salaryFilter');
+  if (filterSelect) {
+    filterSelect.addEventListener('change', (e) => {
+      const search = document.getElementById('salarySearch')?.value || '';
+      renderSalary(e.target.value, search);
+    });
+  }
 });
+
+// ============================================================
+// EXPOSE GLOBALLY
+// ============================================================
 
 window.renderSalary = renderSalary;
 window.showAddSalaryModal = showAddSalaryModal;

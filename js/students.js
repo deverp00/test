@@ -122,7 +122,6 @@ function showAddStudentModal() {
       photo: ''
     };
 
-    // Show loading on button
     const btn = document.querySelector('#modal .btn-primary');
     if (btn) { btn.disabled = true; btn.textContent = 'Adding...'; }
 

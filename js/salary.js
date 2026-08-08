@@ -164,11 +164,7 @@ function showAddSalaryModal() {
       return;
     }
 
-    let receiptNo = '';
-    if (status === 'paid') {
-      receiptNo = `SAL-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
-    }
-
+    // Create salary record WITHOUT receiptNo and paymentDate (they are not allowed by Security Rules)
     const newSalary = {
       employeeId: employeeId,
       employeeName: teacher.name,
@@ -177,9 +173,7 @@ function showAddSalaryModal() {
       year,
       amount,
       status,
-      paymentMethod: status === 'paid' ? paymentMethod : '',
-      receiptNo: receiptNo,
-      paymentDate: status === 'paid' ? new Date().toISOString().split('T')[0] : ''
+      paymentMethod: status === 'paid' ? paymentMethod : ''
     };
 
     const btn = document.querySelector('#modal .btn-primary');

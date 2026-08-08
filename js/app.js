@@ -82,29 +82,29 @@ function navigateTo(page) {
   const target = document.getElementById(`page-${page}`);
   if (target) target.classList.add('active');
 
-      const titles = {
-        dashboard: 'Dashboard',
-        students: 'Students',
-        teachers: 'Teachers & Staff',
-        fees: 'Fee Management',
-        salary: 'Salary',
-        analytics: 'Reports & Analytics',
-        attendance: 'Attendance',
-    };
+  const titles = {
+    dashboard: 'Dashboard',
+    students: 'Students',
+    teachers: 'Teachers & Staff',
+    fees: 'Fee Management',
+    salary: 'Salary',
+    analytics: 'Reports & Analytics',
+    attendance: 'Attendance',
+  };
   const title = titles[page] || 'Dashboard';
   pageTitle.textContent = title;
   document.title = `SchoolERP | ${title}`;
 
-      switch (page) {
-        case 'dashboard': if (window.renderDashboard) window.renderDashboard(); break;
-        case 'students': if (window.renderStudents) window.renderStudents(); break;
-        case 'teachers': if (window.renderStaff) window.renderStaff(); break;
-        case 'fees': if (window.renderFees) { window.renderFees(); if (window.initFeeModule) window.initFeeModule(); } break;
-        case 'salary': if (window.renderSalary) window.renderSalary(); break;
-        case 'analytics': if (window.renderAnalytics) window.renderAnalytics(); break;
-        case 'attendance': if (window.renderAttendance) window.renderAttendance(); break;
-        default: break;
-    }
+  switch (page) {
+    case 'dashboard': if (window.renderDashboard) window.renderDashboard(); break;
+    case 'students': if (window.renderStudents) window.renderStudents(); break;
+    case 'teachers': if (window.renderStaff) window.renderStaff(); break;
+    case 'fees': if (window.renderFees) { window.renderFees(); if (window.initFeeModule) window.initFeeModule(); } break;
+    case 'salary': if (window.renderSalary) window.renderSalary(); break;
+    case 'analytics': if (window.renderAnalytics) window.renderAnalytics(); break;
+    case 'attendance': if (window.renderAttendance) window.renderAttendance(); break;
+    default: break;
+  }
 
   if (window.innerWidth < 1024) {
     sidebar.classList.remove('open');
@@ -176,7 +176,6 @@ if (logoutBtn) {
     try {
       await logoutAdmin();
       showToast('Logged out successfully.', 'success');
-      // Reload the page to trigger the login overlay from login.js
       window.location.reload();
     } catch (error) {
       console.error('Logout error:', error);
@@ -197,7 +196,7 @@ window.PAYMENTS = [];
 window.ACTIVITIES = [];
 
 // ============================================================
-// LOAD DATA FROM FIREBASE
+// LOAD DATA FROM FIREBASE (only if authenticated)
 // ============================================================
 
 async function loadAllData() {
@@ -223,7 +222,7 @@ async function loadAllData() {
 }
 
 // ============================================================
-// INIT – Check Auth & Load Data, then Navigate
+// INIT – Check Auth & Load Data Only if Authenticated
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -231,13 +230,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const user = await getCurrentUser();
   if (!user) {
-    console.warn('No authenticated user. Firebase rules may block reads/writes.');
-    showToast('Please log in as admin to use the system.', 'info');
+    console.warn('No authenticated user. Skipping data load.');
+    // Do NOT call loadAllData() when unauthenticated – prevents Permission denied errors.
+    // login.js will display the login overlay.
   } else {
     console.log('Authenticated as:', user.email);
+    await loadAllData();
+    // Migrate existing teachers to have Employee IDs
+    if (window.migrateEmployeeIds) {
+      await window.migrateEmployeeIds();
+    }
   }
-
-  await loadAllData();
   showLoading(false);
   navigateTo('dashboard');
 });

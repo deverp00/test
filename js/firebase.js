@@ -1,151 +1,257 @@
 // ============================================================
-// FIREBASE CONFIGURATION & CRUD WRAPPERS
+// CORE APPLICATION – Navigation, Modal, Toast, Loading, Data
 // ============================================================
 
-import { initializeApp } from "firebase/app";
-import { getDatabase, ref, set, push, update, remove, get } from "firebase/database";
-import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail, signOut } from "firebase/auth";
-
-// Your Firebase config
-const firebaseConfig = {
-  apiKey: "AIzaSyBLX-DBrAZZgi7OGRW3-oeno0PJsZ9hzEg",
-  authDomain: "its-me-ame.firebaseapp.com",
-  databaseURL: "https://its-me-ame-default-rtdb.firebaseio.com",
-  projectId: "its-me-ame",
-  storageBucket: "its-me-ame.firebasestorage.app",
-  messagingSenderId: "832380884001",
-  appId: "1:832380884001:web:0c9239588ceb8d8995bf60",
-  measurementId: "G-L12EEJG7L9"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-const auth = getAuth(app);
+import { getCurrentUser, getAllData, logoutAdmin } from './firebase.js';
 
 // ============================================================
-// AUTHENTICATION HELPERS
+// DOM REFS
 // ============================================================
 
-/**
- * Sign in with email and password.
- * @param {string} email - Admin email.
- * @param {string} password - Admin password.
- * @returns {Promise} - Resolves with user credential.
- */
-function loginAdmin(email, password) {
-  return signInWithEmailAndPassword(auth, email, password);
+const sidebar = document.getElementById('sidebar');
+const overlay = document.getElementById('overlay');
+const menuToggle = document.getElementById('menuToggle');
+const sidebarClose = document.getElementById('sidebarClose');
+const pageTitle = document.getElementById('pageTitle');
+const modalOverlay = document.getElementById('modalOverlay');
+const modal = document.getElementById('modal');
+const modalTitle = document.getElementById('modalTitle');
+const modalBody = document.getElementById('modalBody');
+const modalClose = document.getElementById('modalClose');
+const modalCancel = document.getElementById('modalCancel');
+const modalConfirm = document.getElementById('modalConfirm');
+const toastContainer = document.getElementById('toastContainer');
+const loadingOverlay = document.getElementById('loadingOverlay');
+const notificationBtn = document.getElementById('notificationBtn');
+const badgeDot = document.querySelector('.badge-dot');
+const logoutBtn = document.getElementById('logoutBtn');
+
+let currentPage = 'dashboard';
+let modalCallback = null;
+
+// ============================================================
+// TOAST & LOADING
+// ============================================================
+
+function showLoading(show = true) {
+  loadingOverlay.classList.toggle('active', show);
 }
 
-/**
- * Get the currently authenticated user (one-time check).
- * @returns {Promise} - Resolves with user object or null.
- */
-function getCurrentUser() {
-  return new Promise((resolve) => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      unsubscribe();
-      resolve(user);
-    });
+function showToast(message, type = 'info') {
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  toastContainer.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(20px)';
+    setTimeout(() => toast.remove(), 300);
+  }, 3500);
+}
+
+// ============================================================
+// MODAL
+// ============================================================
+
+function openModal(title, bodyHTML, confirmText = 'Confirm', callback) {
+  modalTitle.textContent = title;
+  modalBody.innerHTML = bodyHTML;
+  modalConfirm.textContent = confirmText;
+  modalCallback = callback;
+  modalOverlay.classList.add('active');
+}
+
+function closeModal() {
+  modalOverlay.classList.remove('active');
+  modalCallback = null;
+}
+
+// ============================================================
+// NAVIGATION
+// ============================================================
+
+function navigateTo(page) {
+  currentPage = page;
+  document.querySelectorAll('.nav-link').forEach(link => {
+    link.classList.toggle('active', link.dataset.page === page);
+  });
+
+  document.querySelectorAll('.page-section').forEach(section => {
+    section.classList.remove('active');
+  });
+  const target = document.getElementById(`page-${page}`);
+  if (target) target.classList.add('active');
+
+  const titles = {
+    dashboard: 'Dashboard',
+    students: 'Students',
+    teachers: 'Teachers & Staff',
+    fees: 'Fee Management',
+    salary: 'Salary',
+    analytics: 'Reports & Analytics',
+    attendance: 'Attendance',
+  };
+  const title = titles[page] || 'Dashboard';
+  pageTitle.textContent = title;
+  document.title = `SchoolERP | ${title}`;
+
+  switch (page) {
+    case 'dashboard': if (window.renderDashboard) window.renderDashboard(); break;
+    case 'students': if (window.renderStudents) window.renderStudents(); break;
+    case 'teachers': if (window.renderStaff) window.renderStaff(); break;
+    case 'fees': if (window.renderFees) { window.renderFees(); if (window.initFeeModule) window.initFeeModule(); } break;
+    case 'salary': if (window.renderSalary) window.renderSalary(); break;
+    case 'analytics': if (window.renderAnalytics) window.renderAnalytics(); break;
+    case 'attendance': if (window.renderAttendance) window.renderAttendance(); break;
+    default: break;
+  }
+
+  if (window.innerWidth < 1024) {
+    sidebar.classList.remove('open');
+    overlay.classList.remove('active');
+  }
+}
+
+// ============================================================
+// SIDEBAR EVENTS
+// ============================================================
+
+menuToggle.addEventListener('click', () => {
+  sidebar.classList.toggle('open');
+  overlay.classList.toggle('active');
+});
+
+sidebarClose.addEventListener('click', () => {
+  sidebar.classList.remove('open');
+  overlay.classList.remove('active');
+});
+
+overlay.addEventListener('click', () => {
+  sidebar.classList.remove('open');
+  overlay.classList.remove('active');
+});
+
+document.querySelectorAll('.nav-link').forEach(link => {
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    const page = link.dataset.page;
+    navigateTo(page);
+  });
+});
+
+// ============================================================
+// MODAL EVENTS
+// ============================================================
+
+modalClose.addEventListener('click', closeModal);
+modalCancel.addEventListener('click', closeModal);
+modalOverlay.addEventListener('click', (e) => {
+  if (e.target === modalOverlay) closeModal();
+});
+modalConfirm.addEventListener('click', () => {
+  if (modalCallback) modalCallback();
+});
+
+// ============================================================
+// NOTIFICATION (placeholder)
+// ============================================================
+
+if (notificationBtn) {
+  notificationBtn.addEventListener('click', () => {
+    showToast('No new notifications', 'info');
   });
 }
 
-/**
- * Log out the current user.
- * @returns {Promise<void>}
- */
-function logoutAdmin() {
-  return signOut(auth);
-}
-
-/**
- * Send password reset email.
- * @param {string} email - User email.
- * @returns {Promise<void>}
- */
-function sendPasswordReset(email) {
-  return sendPasswordResetEmail(auth, email);
+// Hide badge initially (no notifications)
+if (badgeDot) {
+  badgeDot.style.display = 'none';
 }
 
 // ============================================================
-// CRUD OPERATIONS (Realtime Database)
+// LOGOUT HANDLER
 // ============================================================
 
-/**
- * Read all records from a path (one-time read).
- * @param {string} path - Database path (e.g., 'students').
- * @returns {Promise<Array>} - Array of objects with id and data.
- */
-function getAllData(path) {
-  const dbRef = ref(db, path);
-  return get(dbRef).then((snapshot) => {
-    const data = snapshot.val();
-    if (data) {
-      return Object.keys(data).map((key) => ({ id: key, ...data[key] }));
+if (logoutBtn) {
+  logoutBtn.addEventListener('click', async () => {
+    try {
+      await logoutAdmin();
+      showToast('Logged out successfully.', 'success');
+      window.location.reload();
+    } catch (error) {
+      console.error('Logout error:', error);
+      showToast('Logout failed. Please try again.', 'error');
     }
-    return [];
   });
 }
 
-/**
- * Create a new record.
- * @param {string} path - Database path.
- * @param {Object} data - The record data.
- * @returns {Promise<Object>} - The created record with id.
- */
-function createData(path, data) {
-  const newRef = push(ref(db, path));
-  return set(newRef, data).then(() => ({ id: newRef.key, ...data }));
-}
+// ============================================================
+// GLOBAL DATA STORES
+// ============================================================
 
-/**
- * Update an existing record.
- * @param {string} path - Database path.
- * @param {string} id - Record id.
- * @param {Object} data - The updated fields.
- * @returns {Promise<void>}
- */
-function updateData(path, id, data) {
-  const itemRef = ref(db, `${path}/${id}`);
-  return update(itemRef, data);
-}
+window.STUDENTS = [];
+window.TEACHERS = [];
+window.FEE_RECORDS = [];
+window.SALARY_RECORDS = [];
+window.PAYMENTS = [];
+window.ACTIVITIES = [];
 
-/**
- * Delete a record.
- * @param {string} path - Database path.
- * @param {string} id - Record id.
- * @returns {Promise<void>}
- */
-function deleteData(path, id) {
-  const itemRef = ref(db, `${path}/${id}`);
-  return remove(itemRef);
-}
+// ============================================================
+// LOAD DATA FROM FIREBASE
+// ============================================================
 
-/**
- * Get a single record.
- * @param {string} path - Database path.
- * @param {string} id - Record id.
- * @returns {Promise<Object|null>}
- */
-function getOneData(path, id) {
-  const itemRef = ref(db, `${path}/${id}`);
-  return get(itemRef).then((snapshot) => snapshot.val());
+async function loadAllData() {
+  try {
+    const [students, teachers, fees, salary, payments, activities] = await Promise.all([
+      getAllData('students'),
+      getAllData('teachers'),
+      getAllData('feeRecords'),
+      getAllData('salaryRecords'),
+      getAllData('payments'),
+      getAllData('activities'),
+    ]);
+    window.STUDENTS = students;
+    window.TEACHERS = teachers;
+    window.FEE_RECORDS = fees;
+    window.SALARY_RECORDS = salary;
+    window.PAYMENTS = payments;
+    window.ACTIVITIES = activities;
+  } catch (error) {
+    console.error('Error loading data:', error);
+    showToast('Error loading data from Firebase', 'error');
+  }
 }
 
 // ============================================================
-// EXPORTS
+// INIT – Check Auth & Load Data, then Navigate
 // ============================================================
 
-export {
-  db,
-  auth,
-  loginAdmin,
-  getCurrentUser,
-  logoutAdmin,
-  sendPasswordReset,
-  getAllData,
-  createData,
-  updateData,
-  deleteData,
-  getOneData
-};
+document.addEventListener('DOMContentLoaded', async () => {
+  showLoading(true);
+
+  const user = await getCurrentUser();
+  if (!user) {
+    console.warn('No authenticated user. Firebase rules may block reads/writes.');
+    showToast('Please log in as admin to use the system.', 'info');
+  } else {
+    console.log('Authenticated as:', user.email);
+  }
+
+  await loadAllData();
+  // Migrate existing teachers to have Employee IDs
+  if (window.migrateEmployeeIds) {
+    await window.migrateEmployeeIds();
+  }
+  showLoading(false);
+  navigateTo('dashboard');
+});
+
+// ============================================================
+// EXPOSE GLOBAL FUNCTIONS
+// ============================================================
+
+window.showToast = showToast;
+window.showLoading = showLoading;
+window.openModal = openModal;
+window.closeModal = closeModal;
+window.navigateTo = navigateTo;
+window.loadAllData = loadAllData;

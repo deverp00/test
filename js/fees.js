@@ -551,7 +551,13 @@ function showAddFeeModal() {
 // ============================================================
 
 async function deleteFee(id) {
-  if (!confirm('Delete this fee record?')) return;
+    const confirmed = await window.showConfirm(
+    'Delete Fee Record',
+    'Are you sure you want to delete this fee record? This action cannot be undone.',
+    'Delete',
+    'Cancel'
+  );
+  if (!confirmed) return;
 
   const fee = window.FEE_RECORDS.find(f => f.id === id);
   if (!fee) {

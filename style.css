@@ -1109,7 +1109,8 @@ select {
     #exportAnalyticsPdf,
     #exportAnalyticsExcel,
     #loginOverlay,
-    footer {
+    #logoutBtn,
+    .sidebar-footer {
         display: none !important;
     }
 

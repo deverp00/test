@@ -131,39 +131,43 @@ function showAddSalaryModal() {
     const status = document.getElementById('addSalaryStatus').value;
     const paymentMethod = document.getElementById('addSalaryPaymentMethod').value;
 
+    // ---- Validate input ----
     if (!teacherFirebaseId || !month || !year || isNaN(amount) || amount <= 0) {
-      window.showToast('Please fill all fields with valid values', 'error');
+      window.showToast('Please fill all fields with valid values.', 'error');
       return;
     }
-
     if (status === 'paid' && !paymentMethod) {
-      window.showToast('Payment method is required when status is "paid"', 'error');
+      window.showToast('Payment method is required when status is "paid".', 'error');
       return;
     }
 
     const teacher = window.TEACHERS.find(t => t.id === teacherFirebaseId);
     if (!teacher) {
-      window.showToast('Teacher not found', 'error');
+      window.showToast('Teacher not found. Please refresh the page.', 'error');
       return;
     }
 
-    // --- CRITICAL: Ensure Employee ID and Role are present ---
+    // ---- Ensure Employee ID and Role exist ----
     const employeeId = teacher.employeeId || teacher.id;
     if (!employeeId) {
       window.showToast('Teacher has no Employee ID. Please re-add the teacher.', 'error');
       return;
     }
 
-    const role = teacher.role || 'staff'; // fallback to 'staff' if role missing
+    // Ensure role is exactly 'teacher' or 'staff'
+    let role = teacher.role;
+    if (role !== 'teacher' && role !== 'staff') {
+      role = 'staff'; // fallback to a valid role
+    }
 
-    // Duplicate check using Employee ID
+    // ---- Duplicate check ----
     const existing = window.SALARY_RECORDS.find(s => s.employeeId === employeeId && s.month === month && s.year === year);
     if (existing) {
       window.showToast('This teacher already has a salary record for this month/year.', 'error');
       return;
     }
 
-    // Build the record – only fields allowed by Firebase rules
+    // ---- Build record (only fields allowed by Firebase rules) ----
     const newSalary = {
       employeeId: employeeId,
       employeeName: teacher.name,
@@ -175,8 +179,8 @@ function showAddSalaryModal() {
       paymentMethod: status === 'paid' ? paymentMethod : ''
     };
 
-    // Log the object for debugging (remove in production if needed)
-    console.log('Saving salary record:', newSalary);
+    // ---- Log for debugging ----
+    console.log('Attempting to save salary record:', newSalary);
 
     const btn = document.querySelector('#modal .btn-primary');
     if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
@@ -184,22 +188,28 @@ function showAddSalaryModal() {
     try {
       const result = await createData('salaryRecords', newSalary);
       window.SALARY_RECORDS.push(result);
-      window.showToast('Salary record added successfully', 'success');
+      window.showToast('Salary record added successfully!', 'success');
       renderSalary();
       if (window.renderDashboard) window.renderDashboard();
       window.closeModal();
     } catch (error) {
       console.error('Add salary error (full details):', error);
-      // Show a more specific message if available
-      let msg = 'Failed to add salary record. Please check console for details.';
-      if (error.message) msg += ' Error: ' + error.message;
+      // Extract a meaningful error message
+      let msg = 'Failed to add salary record. ';
+      if (error.message) {
+        msg += 'Error: ' + error.message;
+      } else if (error.code) {
+        msg += 'Code: ' + error.code;
+      } else {
+        msg += 'Please check the console for details.';
+      }
       window.showToast(msg, 'error');
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = 'Add Salary'; }
     }
   });
 
-  // Auto-refresh eligible teachers when month/year changes
+  // ---- Auto-refresh eligible teachers when month/year changes ----
   setTimeout(() => {
     const monthSelect = document.getElementById('addSalaryMonth');
     const yearSelect = document.getElementById('addSalaryYear');
@@ -234,7 +244,7 @@ async function deleteSalary(id) {
   try {
     await deleteData('salaryRecords', id);
     window.SALARY_RECORDS = window.SALARY_RECORDS.filter(s => s.id !== id);
-    window.showToast('Salary record deleted', 'success');
+    window.showToast('Salary record deleted.', 'success');
     renderSalary();
     if (window.renderDashboard) window.renderDashboard();
   } catch (error) {

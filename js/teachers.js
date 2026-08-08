@@ -1,5 +1,5 @@
 // ============================================================
-// TEACHERS & STAFF – CRUD, Render (No Employee ID)
+// TEACHERS & STAFF – CRUD, Render (No Employee ID stored)
 // ============================================================
 
 import { createData, updateData, deleteData } from './firebase.js';
@@ -95,7 +95,7 @@ function showAddStaffModal() {
       return;
     }
 
-    // No employeeId field – the Firebase key will serve as the unique ID
+    // No employeeId field – Firebase key will be the unique ID
     const newStaff = { name, role, designation, subDepartment: subject, email };
     const result = await createData('teachers', newStaff);
     window.TEACHERS.push(result);

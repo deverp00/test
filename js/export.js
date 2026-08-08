@@ -38,7 +38,7 @@ function getFilteredData(module) {
       const statusFilter = document.getElementById('feeStatusFilter')?.value || 'all';
       const search = document.getElementById('feeUniversalSearch')?.value || '';
       const classFilter = document.getElementById('feeClassFilter')?.value || 'all';
-      const sectionFilter = document.getElementById('feeSectionFilter')?.value || 'all';
+      const monthFilter = document.getElementById('feeMonthFilter')?.value || 'all';
       let data = window.FEE_RECORDS || [];
       if (statusFilter !== 'all') {
         data = data.filter(f => f.status === statusFilter);
@@ -62,10 +62,12 @@ function getFilteredData(module) {
           return s && s.class === classNum;
         });
       }
-      if (sectionFilter !== 'all') {
+      // Month filter – if not 'all', filter by associated payment month
+      if (monthFilter !== 'all') {
         data = data.filter(f => {
-          const s = window.STUDENTS.find(st => st.id === f.studentId);
-          return s && s.section === sectionFilter;
+          const payment = window.PAYMENTS.find(p => p.studentId === f.studentId && p.amount === f.amount && p.status === f.status && p.date);
+          if (!payment) return false;
+          return payment.month === monthFilter;
         });
       }
       return data;
@@ -105,8 +107,8 @@ function buildExportData(module, data) {
       break;
     case 'teachers':
       title = 'Teachers & Staff';
-      headers = ['#', 'Name', 'Role', 'Designation', 'Sub-Department', 'Email'];
-      rows = data.map((t, idx) => [idx+1, t.name, t.role, t.designation, t.subDepartment, t.email]);
+      headers = ['#', 'Employee ID', 'Name', 'Role', 'Designation', 'Sub-Department', 'Email'];
+      rows = data.map((t, idx) => [idx+1, t.employeeId || '—', t.name, t.role, t.designation, t.subDepartment, t.email]);
       break;
     case 'fees':
       title = 'Fee Records';
@@ -120,8 +122,8 @@ function buildExportData(module, data) {
       break;
     case 'salary':
       title = 'Salary Records';
-      headers = ['#', 'Employee', 'Role', 'Month', 'Year', 'Amount', 'Status', 'Payment Method'];
-      rows = data.map((s, idx) => [idx+1, s.employeeName, s.role, s.month, s.year, s.amount, s.status, s.paymentMethod || '—']);
+      headers = ['#', 'Employee', 'Employee ID', 'Role', 'Month', 'Year', 'Amount', 'Status', 'Payment Method'];
+      rows = data.map((s, idx) => [idx+1, s.employeeName, s.employeeId || '—', s.role, s.month, s.year, s.amount, s.status, s.paymentMethod || '—']);
       break;
     default:
       return null;

@@ -25,6 +25,25 @@ function getNextEmployeeId() {
   return `EMP-${padded}`;
 }
 
+/**
+ * Ensure a teacher has an Employee ID. If missing, generate one and save.
+ * @param {Object} teacher - The teacher object (must have id and name).
+ * @returns {Promise<string>} - The employeeId.
+ */
+async function ensureEmployeeId(teacher) {
+  if (teacher.employeeId) return teacher.employeeId;
+
+  const newId = getNextEmployeeId();
+  await updateData('teachers', teacher.id, { employeeId: newId });
+  teacher.employeeId = newId;
+
+  // Update local array
+  const idx = window.TEACHERS.findIndex(t => t.id === teacher.id);
+  if (idx !== -1) window.TEACHERS[idx] = { ...window.TEACHERS[idx], employeeId: newId };
+
+  return newId;
+}
+
 async function migrateEmployeeIds() {
   const teachers = window.TEACHERS || [];
   let updated = 0;
@@ -280,3 +299,4 @@ window.showAddStaffModal = showAddStaffModal;
 window.editStaff = editStaff;
 window.deleteStaff = deleteStaff;
 window.migrateEmployeeIds = migrateEmployeeIds;
+window.ensureEmployeeId = ensureEmployeeId;

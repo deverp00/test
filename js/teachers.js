@@ -1,69 +1,8 @@
 // ============================================================
-// TEACHERS & STAFF – CRUD, Render, Employee ID
+// TEACHERS & STAFF – CRUD, Render (No Employee ID)
 // ============================================================
 
 import { createData, updateData, deleteData } from './firebase.js';
-
-// ============================================================
-// EMPLOYEE ID GENERATION
-// ============================================================
-
-function getNextEmployeeId() {
-  const teachers = window.TEACHERS || [];
-  let maxNum = 0;
-  teachers.forEach(t => {
-    if (t.employeeId) {
-      const match = t.employeeId.match(/EMP-(\d+)/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (num > maxNum) maxNum = num;
-      }
-    }
-  });
-  const nextNum = maxNum + 1;
-  const padded = String(nextNum).padStart(4, '0');
-  return `EMP-${padded}`;
-}
-
-/**
- * Ensure a teacher has an Employee ID. If missing, generate one and save.
- * @param {Object} teacher - The teacher object (must have id and name).
- * @returns {Promise<string>} - The employeeId.
- */
-async function ensureEmployeeId(teacher) {
-  if (teacher.employeeId) return teacher.employeeId;
-
-  const newId = getNextEmployeeId();
-  await updateData('teachers', teacher.id, { employeeId: newId });
-  teacher.employeeId = newId;
-
-  // Update local array
-  const idx = window.TEACHERS.findIndex(t => t.id === teacher.id);
-  if (idx !== -1) window.TEACHERS[idx] = { ...window.TEACHERS[idx], employeeId: newId };
-
-  return newId;
-}
-
-async function migrateEmployeeIds() {
-  const teachers = window.TEACHERS || [];
-  let updated = 0;
-  for (const teacher of teachers) {
-    if (!teacher.employeeId) {
-      const newId = getNextEmployeeId();
-      await updateData('teachers', teacher.id, { employeeId: newId });
-      teacher.employeeId = newId;
-      updated++;
-    }
-  }
-  if (updated > 0) {
-    console.log(`Migrated ${updated} teachers with Employee IDs.`);
-  }
-  return updated;
-}
-
-// ============================================================
-// RENDER STAFF TABLE + STATS
-// ============================================================
 
 function renderStaff(filter = 'all', search = '') {
   const teachers = window.TEACHERS || [];
@@ -79,9 +18,7 @@ function renderStaff(filter = 'all', search = '') {
   `;
 
   let list = teachers;
-  if (filter !== 'all') {
-    list = list.filter(t => t.role === filter);
-  }
+  if (filter !== 'all') list = list.filter(t => t.role === filter);
   if (search.trim()) {
     const q = search.trim().toLowerCase();
     list = list.filter(t =>
@@ -95,14 +32,13 @@ function renderStaff(filter = 'all', search = '') {
   if (!tbody) return;
 
   if (list.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--gray-500); padding:2rem;">No employees found.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--gray-500); padding:2rem;">No employees found.</td></tr>`;
     return;
   }
 
   tbody.innerHTML = list.map((t, idx) => `
     <tr>
       <td>${idx + 1}</td>
-      <td>${t.employeeId || '—'}</td>
       <td>${t.name}</td>
       <td><span class="status-badge ${t.role === 'teacher' ? 'status-paid' : 'status-pending'}">${t.role}</span></td>
       <td>${t.designation}</td>
@@ -124,10 +60,6 @@ function renderStaff(filter = 'all', search = '') {
     btn.addEventListener('click', () => deleteStaff(btn.dataset.id));
   });
 }
-
-// ============================================================
-// ADD STAFF (with Employee ID)
-// ============================================================
 
 function showAddStaffModal() {
   const designationOptions = ['Principal', 'Head Master', 'Assistant Teacher', 'Subject Teacher', 'Administration', 'Staff', 'Peon']
@@ -155,8 +87,7 @@ function showAddStaffModal() {
     const name = document.getElementById('addStaffName').value.trim();
     const role = document.getElementById('addStaffRole').value;
     const designation = document.getElementById('addStaffDesignation').value;
-    const subjectEl = document.getElementById('addStaffSubject');
-    const subject = subjectEl ? subjectEl.value : 'N/A';
+    const subject = document.getElementById('addStaffSubject')?.value || 'N/A';
     const email = document.getElementById('addStaffEmail').value.trim();
 
     if (!name || !email) {
@@ -164,9 +95,8 @@ function showAddStaffModal() {
       return;
     }
 
-    const employeeId = getNextEmployeeId();
-
-    const newStaff = { name, role, designation, subDepartment: subject, email, employeeId };
+    // No employeeId field – the Firebase key will serve as the unique ID
+    const newStaff = { name, role, designation, subDepartment: subject, email };
     const result = await createData('teachers', newStaff);
     window.TEACHERS.push(result);
     window.showToast('Added successfully', 'success');
@@ -187,10 +117,6 @@ function showAddStaffModal() {
     }
   }, 50);
 }
-
-// ============================================================
-// EDIT STAFF
-// ============================================================
 
 async function editStaff(id) {
   const staff = window.TEACHERS.find(t => t.id === id);
@@ -221,7 +147,7 @@ async function editStaff(id) {
     const name = document.getElementById('editStaffName').value.trim();
     const role = document.getElementById('editStaffRole').value;
     const designation = document.getElementById('editStaffDesignation').value;
-    const subject = document.getElementById('editStaffSubject') ? document.getElementById('editStaffSubject').value : 'N/A';
+    const subject = document.getElementById('editStaffSubject')?.value || 'N/A';
     const email = document.getElementById('editStaffEmail').value.trim();
 
     if (!name || !email) {
@@ -229,7 +155,6 @@ async function editStaff(id) {
       return;
     }
 
-    // Employee ID is preserved – do not change it
     const updated = { name, role, designation, subDepartment: subject, email };
     await updateData('teachers', id, updated);
     const idx = window.TEACHERS.findIndex(t => t.id === id);
@@ -252,10 +177,6 @@ async function editStaff(id) {
   }, 50);
 }
 
-// ============================================================
-// DELETE STAFF
-// ============================================================
-
 async function deleteStaff(id) {
   if (!confirm('Delete this record?')) return;
   await deleteData('teachers', id);
@@ -265,38 +186,20 @@ async function deleteStaff(id) {
   if (window.renderDashboard) window.renderDashboard();
 }
 
-// ============================================================
-// EVENT BINDINGS
-// ============================================================
-
+// Event bindings
 document.addEventListener('DOMContentLoaded', () => {
-  const addBtn = document.getElementById('addStaffBtn');
-  if (addBtn) addBtn.addEventListener('click', showAddStaffModal);
-
-  const searchInput = document.getElementById('staffSearch');
-  if (searchInput) {
-    searchInput.addEventListener('input', (e) => {
-      const filter = document.getElementById('staffFilter')?.value || 'all';
-      renderStaff(filter, e.target.value);
-    });
-  }
-
-  const filterSelect = document.getElementById('staffFilter');
-  if (filterSelect) {
-    filterSelect.addEventListener('change', (e) => {
-      const search = document.getElementById('staffSearch')?.value || '';
-      renderStaff(e.target.value, search);
-    });
-  }
+  document.getElementById('addStaffBtn')?.addEventListener('click', showAddStaffModal);
+  document.getElementById('staffSearch')?.addEventListener('input', (e) => {
+    const filter = document.getElementById('staffFilter')?.value || 'all';
+    renderStaff(filter, e.target.value);
+  });
+  document.getElementById('staffFilter')?.addEventListener('change', (e) => {
+    const search = document.getElementById('staffSearch')?.value || '';
+    renderStaff(e.target.value, search);
+  });
 });
-
-// ============================================================
-// EXPOSE GLOBALLY
-// ============================================================
 
 window.renderStaff = renderStaff;
 window.showAddStaffModal = showAddStaffModal;
 window.editStaff = editStaff;
 window.deleteStaff = deleteStaff;
-window.migrateEmployeeIds = migrateEmployeeIds;
-window.ensureEmployeeId = ensureEmployeeId;

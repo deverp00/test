@@ -13,7 +13,7 @@
     --primary: #3b82f6;
     --primary-dark: #2563eb;
     --primary-light: #93bbfc;
-    --gray-50: #f8fafc;
+    --gray-50: #000000;
     --gray-100: #f1f5f9;
     --gray-200: #e2e8f0;
     --gray-300: #cbd5e1;
@@ -1108,7 +1108,8 @@ select {
     #page-analytics .card,
     #exportAnalyticsPdf,
     #exportAnalyticsExcel,
-    #loginOverlay {
+    #loginOverlay,
+    footer {
         display: none !important;
     }
 

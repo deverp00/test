@@ -236,7 +236,13 @@ function showAddSalaryModal() {
 // ============================================================
 
 async function deleteSalary(id) {
-  if (!confirm('Are you sure you want to delete this salary record?')) return;
+    const confirmed = await window.showConfirm(
+    'Delete Salary Record',
+    'Are you sure you want to delete this salary record? This action cannot be undone.',
+    'Delete',
+    'Cancel'
+  );
+  if (!confirmed) return;
 
   const btn = document.querySelector(`button[data-id="${id}"][data-action="deleteSalary"]`);
   if (btn) { btn.disabled = true; btn.textContent = 'Deleting...'; }

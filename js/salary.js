@@ -147,8 +147,14 @@ function showAddSalaryModal() {
       return;
     }
 
-    // Ensure Employee ID exists (fallback to Firebase ID if missing)
+    // --- CRITICAL: Ensure Employee ID and Role are present ---
     const employeeId = teacher.employeeId || teacher.id;
+    if (!employeeId) {
+      window.showToast('Teacher has no Employee ID. Please re-add the teacher.', 'error');
+      return;
+    }
+
+    const role = teacher.role || 'staff'; // fallback to 'staff' if role missing
 
     // Duplicate check using Employee ID
     const existing = window.SALARY_RECORDS.find(s => s.employeeId === employeeId && s.month === month && s.year === year);
@@ -161,13 +167,16 @@ function showAddSalaryModal() {
     const newSalary = {
       employeeId: employeeId,
       employeeName: teacher.name,
-      role: teacher.role,
+      role: role,
       month: month,
       year: year,
       amount: amount,
       status: status,
       paymentMethod: status === 'paid' ? paymentMethod : ''
     };
+
+    // Log the object for debugging (remove in production if needed)
+    console.log('Saving salary record:', newSalary);
 
     const btn = document.querySelector('#modal .btn-primary');
     if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
@@ -180,8 +189,11 @@ function showAddSalaryModal() {
       if (window.renderDashboard) window.renderDashboard();
       window.closeModal();
     } catch (error) {
-      console.error('Add salary error:', error);
-      window.showToast('Failed to add salary record. Please check console for details.', 'error');
+      console.error('Add salary error (full details):', error);
+      // Show a more specific message if available
+      let msg = 'Failed to add salary record. Please check console for details.';
+      if (error.message) msg += ' Error: ' + error.message;
+      window.showToast(msg, 'error');
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = 'Add Salary'; }
     }

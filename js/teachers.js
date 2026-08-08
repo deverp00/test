@@ -178,7 +178,13 @@ async function editStaff(id) {
 }
 
 async function deleteStaff(id) {
-  if (!confirm('Delete this record?')) return;
+    const confirmed = await window.showConfirm(
+    'Delete Employee',
+    'Are you sure you want to delete this record? This action cannot be undone.',
+    'Delete',
+    'Cancel'
+  );
+  if (!confirmed) return;
   await deleteData('teachers', id);
   window.TEACHERS = window.TEACHERS.filter(t => t.id !== id);
   window.showToast('Deleted', 'success');

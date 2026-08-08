@@ -9,7 +9,6 @@ function renderDashboard() {
   const salary = window.SALARY_RECORDS || [];
   const activities = window.ACTIVITIES || [];
 
-  // Calculate KPIs
   const totalStudents = students.length;
   const totalTeachers = teachers.filter(t => t.role === 'teacher').length;
   const totalStaff = teachers.filter(t => t.role === 'staff').length;
@@ -18,7 +17,6 @@ function renderDashboard() {
   const totalSalaryPaid = salary.filter(s => s.status === 'paid').reduce((sum, s) => sum + (s.amount || 0), 0);
   const totalSalaryPending = salary.filter(s => s.status === 'pending').reduce((sum, s) => sum + (s.amount || 0), 0);
 
-  // Stats grid
   const statsGrid = document.getElementById('statsGrid');
   if (statsGrid) {
     statsGrid.innerHTML = `
@@ -32,7 +30,6 @@ function renderDashboard() {
     `;
   }
 
-  // Recent activities
   const activityContainer = document.getElementById('recentActivities');
   if (activityContainer) {
     if (activities.length === 0) {
@@ -44,8 +41,8 @@ function renderDashboard() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           </div>
           <div class="activity-content">
-            <div class="activity-text">${act.text || 'No details'}</div>
-            <div class="activity-time">${act.time || 'Just now'}</div>
+            <div class="activity-text">${act.text || ''}</div>
+            <div class="activity-time">${act.time || ''}</div>
           </div>
         </div>
       `).join('');

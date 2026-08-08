@@ -2,7 +2,7 @@
 // CORE APPLICATION – Navigation, Modal, Toast, Loading, Data
 // ============================================================
 
-import { getCurrentUser, getAllData, logoutAdmin } from './firebase.js';
+import { getCurrentUser, getAllData } from './firebase.js';
 
 // ============================================================
 // DOM REFS
@@ -24,7 +24,6 @@ const toastContainer = document.getElementById('toastContainer');
 const loadingOverlay = document.getElementById('loadingOverlay');
 const notificationBtn = document.getElementById('notificationBtn');
 const badgeDot = document.querySelector('.badge-dot');
-const logoutBtn = document.getElementById('logoutBtn');
 
 let currentPage = 'dashboard';
 let modalCallback = null;
@@ -165,23 +164,6 @@ if (notificationBtn) {
 // Hide badge initially (no notifications)
 if (badgeDot) {
   badgeDot.style.display = 'none';
-}
-
-// ============================================================
-// LOGOUT HANDLER
-// ============================================================
-
-if (logoutBtn) {
-  logoutBtn.addEventListener('click', async () => {
-    try {
-      await logoutAdmin();
-      showToast('Logged out successfully.', 'success');
-      window.location.reload();
-    } catch (error) {
-      console.error('Logout error:', error);
-      showToast('Logout failed. Please try again.', 'error');
-    }
-  });
 }
 
 // ============================================================

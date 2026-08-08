@@ -238,10 +238,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   await loadAllData();
-  // Migrate existing teachers to have Employee IDs
-if (window.migrateEmployeeIds) {
-  await window.migrateEmployeeIds();
-}
   showLoading(false);
   navigateTo('dashboard');
 });

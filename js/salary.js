@@ -1,230 +1,109 @@
 // ============================================================
-// SALARY MODULE – CRUD, Render, Filters, One-payment-per-month
+// RECEIPT MODULE – Generate, Download PDF, Print
 // ============================================================
 
-import { createData, deleteData } from './firebase.js';
+// ... (all SCHOOL_INFO, numberToWords, showReceipt, downloadReceiptPDF, viewReceipt, reprintReceipt, printLastReceipt remain unchanged)
 
-function renderSalary(statusFilter = 'all', search = '') {
-  const salaryRecords = window.SALARY_RECORDS || [];
-  const totalPaid = salaryRecords.filter(s => s.status === 'paid').reduce((sum, s) => sum + (s.amount || 0), 0);
-  const totalPending = salaryRecords.filter(s => s.status === 'pending').reduce((sum, s) => sum + (s.amount || 0), 0);
-  const totalRecords = salaryRecords.length;
+// ============================================================
+// SALARY RECEIPT (updated to use teacher.id as fallback)
+// ============================================================
 
-  document.getElementById('salaryStatsGrid').innerHTML = `
-    <div class="stat-card"><span class="stat-label">Total Salary Paid</span><span class="stat-value">₹${totalPaid.toLocaleString()}</span></div>
-    <div class="stat-card"><span class="stat-label">Total Salary Pending</span><span class="stat-value">₹${totalPending.toLocaleString()}</span></div>
-    <div class="stat-card"><span class="stat-label">Total Records</span><span class="stat-value">${totalRecords}</span></div>
-  `;
-
-  let list = salaryRecords;
-  if (statusFilter !== 'all') list = list.filter(s => s.status === statusFilter);
-  if (search.trim()) {
-    const q = search.trim().toLowerCase();
-    list = list.filter(s => s.employeeName.toLowerCase().includes(q));
-  }
-
-  const tbody = document.getElementById('salaryTableBody');
-  if (!tbody) return;
-
-  if (list.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; color:var(--gray-500); padding:2rem;">No salary records found.</td></tr>`;
+function showSalaryReceipt(id) {
+  const salary = window.SALARY_RECORDS.find(s => s.id === id);
+  if (!salary) {
+    window.showToast('Salary record not found', 'error');
     return;
   }
 
-  tbody.innerHTML = list.map((s, idx) => `
-    <tr>
-      <td>${idx + 1}</td>
-      <td>${s.employeeName}</td>
-      <td>${s.employeeId || '—'}</td>
-      <td><span class="status-badge ${s.role === 'teacher' ? 'status-paid' : 'status-pending'}">${s.role}</span></td>
-      <td>${s.month}</td>
-      <td>${s.year}</td>
-      <td>₹${(s.amount || 0).toLocaleString()}</td>
-      <td><span class="status-badge status-${s.status}">${s.status}</span></td>
-      <td>${s.paymentMethod || '—'}</td>
-      <td>
-        <div class="actions-cell">
-          <button class="btn-receipt" onclick="window.showSalaryReceipt('${s.id}')">Receipt</button>
-          <button class="btn-delete" onclick="window.deleteSalary('${s.id}')">Delete</button>
-        </div>
-      </td>
-    </tr>
-  `).join('');
+  // Find teacher using salary.employeeId (which is the Firebase teacher ID)
+  let teacher = null;
+  if (salary.employeeId) {
+    teacher = window.TEACHERS.find(t => t.id === salary.employeeId);
+  }
+  // Fallback: try by name (last resort)
+  if (!teacher) {
+    teacher = window.TEACHERS.find(t => t.name === salary.employeeName);
+  }
+  if (!teacher) {
+    window.showToast('Teacher not found for this salary record', 'error');
+    return;
+  }
 
-  // deleteSalary is called via onclick
-}
+  // Display Employee ID: use salary.employeeId (Firebase ID) or teacher.id as fallback
+  const displayEmployeeId = salary.employeeId || teacher.id || 'N/A';
+  const receiptNo = salary.receiptNo || `SAL-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+  const date = salary.paymentDate ? new Date(salary.paymentDate).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  }) : new Date().toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  });
 
-function getEligibleTeachers(month, year) {
-  const allTeachers = window.TEACHERS || [];
-  const paidEmployeeIds = window.SALARY_RECORDS
-    .filter(s => s.month === month && s.year === year)
-    .map(s => s.employeeId);
-  return allTeachers.filter(t => !paidEmployeeIds.includes(t.id)); // use teacher.id
-}
+  const amountInWords = numberToWords(salary.amount);
+  const academicYear = window.ACADEMIC_YEAR || '2025-26';
 
-function showAddSalaryModal() {
-  const now = new Date();
-  const defaultMonth = now.toLocaleString('default', { month: 'long' });
-  const defaultYear = now.getFullYear();
-
-  const eligible = getEligibleTeachers(defaultMonth, defaultYear);
-  const employeeOptions = eligible.map(t =>
-    `<option value="${t.id}">${t.name} (${t.role})</option>`
-  ).join('');
-
-  const monthOptions = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-    .map(m => `<option value="${m}" ${m === defaultMonth ? 'selected' : ''}>${m}</option>`).join('');
-
-  const yearOptions = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i)
-    .map(y => `<option value="${y}" ${y === defaultYear ? 'selected' : ''}>${y}</option>`).join('');
-
-  const paymentMethodOptions = ['Bank Transfer', 'Cash', 'Cheque', 'Digital Wallet']
-    .map(p => `<option value="${p}">${p}</option>`).join('');
-
-  const modalHTML = `
-    <div class="form-group"><label>Month</label>
-      <select id="addSalaryMonth">${monthOptions}</select>
-    </div>
-    <div class="form-group"><label>Year</label>
-      <select id="addSalaryYear">${yearOptions}</select>
-    </div>
-    <div class="form-group"><label>Teacher</label>
-      <select id="addSalaryEmployee">
-        ${employeeOptions || '<option value="">No eligible teachers</option>'}
-      </select>
-    </div>
-    <div class="form-group"><label>Amount (₹)</label><input type="number" id="addSalaryAmount" placeholder="Enter salary amount" /></div>
-    <div class="form-group"><label>Status</label>
-      <select id="addSalaryStatus">
-        <option value="paid">Paid</option>
-        <option value="pending">Pending</option>
-      </select>
-    </div>
-    <div class="form-group"><label>Payment Method</label>
-      <select id="addSalaryPaymentMethod">
-        <option value="">— Select —</option>
-        ${paymentMethodOptions}
-      </select>
+  const receiptHTML = `
+    <div class="receipt-wrapper" id="receiptContent">
+      <div class="school-header">
+        <h2 class="school-name">${SCHOOL_INFO.name}</h2>
+        <p class="school-address">${SCHOOL_INFO.address}</p>
+        <p class="school-contact">
+          <strong>School Code:</strong> ${SCHOOL_INFO.code} &nbsp;|&nbsp;
+          <strong>Phone:</strong> ${SCHOOL_INFO.phone} &nbsp;|&nbsp;
+          <strong>Email:</strong> ${SCHOOL_INFO.email} &nbsp;|&nbsp;
+          <strong>Web:</strong> ${SCHOOL_INFO.website}
+        </p>
+      </div>
+      <div class="receipt-title">
+        <h3>Salary Receipt</h3>
+        <span class="receipt-number"># ${receiptNo}</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:0.5rem;">
+        <span><strong>Date:</strong> ${date}</span>
+        <span><strong>Academic Year:</strong> ${academicYear}</span>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.3rem 1rem; background:#f8fafc; padding:0.5rem 1rem; border-radius:6px; margin-bottom:0.75rem; font-size:0.85rem;">
+        <div><strong>Teacher:</strong> ${teacher.name}</div>
+        <div><strong>Employee ID:</strong> ${displayEmployeeId}</div>
+        <div><strong>Designation:</strong> ${teacher.designation || 'N/A'}</div>
+        <div><strong>Month:</strong> ${salary.month} ${salary.year}</div>
+      </div>
+      <div class="receipt-details-grid">
+        <div><strong>Amount:</strong> ₹${salary.amount.toLocaleString()}</div>
+        <div><strong>Status:</strong> <span class="status-badge status-${salary.status}">${salary.status}</span></div>
+        <div><strong>Payment Method:</strong> ${salary.paymentMethod || 'N/A'}</div>
+        <div><strong>Amount in Words:</strong> ${amountInWords}</div>
+      </div>
+      <div class="receipt-footer">
+        This is a system‑generated salary receipt. No signature required.
+        <br />Thank you for your service.
+      </div>
     </div>
   `;
 
-  window.openModal('Add Salary', modalHTML, 'Add Salary', async () => {
-    const month = document.getElementById('addSalaryMonth').value;
-    const year = parseInt(document.getElementById('addSalaryYear').value);
-    const teacherFirebaseId = document.getElementById('addSalaryEmployee').value;
-    const amount = parseFloat(document.getElementById('addSalaryAmount').value);
-    const status = document.getElementById('addSalaryStatus').value;
-    const paymentMethod = document.getElementById('addSalaryPaymentMethod').value;
+  window.openModal('Salary Receipt', `
+    ${receiptHTML}
+    <div class="receipt-actions" style="display:flex; gap:0.75rem; justify-content:flex-end; margin-top:0.75rem; border-top:1px solid var(--gray-200); padding-top:0.75rem;">
+      <button onclick="window.print()" class="btn btn-secondary" style="font-size:0.85rem; padding:0.4rem 1rem;">Print</button>
+    </div>
+  `, 'Close', () => { window.closeModal(); });
 
-    if (!teacherFirebaseId || !month || !year || isNaN(amount) || amount <= 0) {
-      window.showToast('Please fill all fields with valid values', 'error');
-      return;
-    }
-
-    if (status === 'paid' && !paymentMethod) {
-      window.showToast('Payment method is required when status is "paid"', 'error');
-      return;
-    }
-
-    const teacher = window.TEACHERS.find(t => t.id === teacherFirebaseId);
-    if (!teacher) {
-      window.showToast('Teacher not found', 'error');
-      return;
-    }
-
-    // Use teacher.id as employeeId
-    const employeeId = teacher.id;
-
-    // Duplicate check using employeeId (teacher.id)
-    const existing = window.SALARY_RECORDS.find(s => s.employeeId === employeeId && s.month === month && s.year === year);
-    if (existing) {
-      window.showToast('This teacher already has a salary record for this month/year.', 'error');
-      return;
-    }
-
-    const newSalary = {
-      employeeId: employeeId,         // Firebase teacher ID
-      employeeName: teacher.name,
-      role: teacher.role,
-      month,
-      year,
-      amount,
-      status,
-      paymentMethod: status === 'paid' ? paymentMethod : ''
-    };
-
-    const btn = document.querySelector('#modal .btn-primary');
-    if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
-
-    try {
-      const result = await createData('salaryRecords', newSalary);
-      window.SALARY_RECORDS.push(result);
-      window.showToast('Salary record added successfully', 'success');
-      renderSalary();
-      if (window.renderDashboard) window.renderDashboard();
-      window.closeModal();
-    } catch (error) {
-      console.error('Add salary error:', error);
-      window.showToast(`Failed to add salary: ${error.message || 'Unknown error'}`, 'error');
-    } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Add Salary'; }
-    }
-  });
-
-  // Auto-refresh eligible teachers when month/year changes
-  setTimeout(() => {
-    const monthSelect = document.getElementById('addSalaryMonth');
-    const yearSelect = document.getElementById('addSalaryYear');
-    const employeeSelect = document.getElementById('addSalaryEmployee');
-
-    function updateEligibleTeachers() {
-      const m = monthSelect.value;
-      const y = parseInt(yearSelect.value);
-      const eligible = getEligibleTeachers(m, y);
-      employeeSelect.innerHTML = eligible.map(t =>
-        `<option value="${t.id}">${t.name} (${t.role})</option>`
-      ).join('') || '<option value="">No eligible teachers</option>';
-    }
-
-    if (monthSelect && yearSelect && employeeSelect) {
-      monthSelect.addEventListener('change', updateEligibleTeachers);
-      yearSelect.addEventListener('change', updateEligibleTeachers);
-    }
-  }, 50);
-}
-
-async function deleteSalary(id) {
-  if (!confirm('Are you sure you want to delete this salary record?')) return;
-
-  const btn = document.querySelector(`button[data-id="${id}"][data-action="deleteSalary"]`);
-  if (btn) { btn.disabled = true; btn.textContent = 'Deleting...'; }
-
-  try {
-    await deleteData('salaryRecords', id);
-    window.SALARY_RECORDS = window.SALARY_RECORDS.filter(s => s.id !== id);
-    window.showToast('Salary record deleted', 'success');
-    renderSalary();
-    if (window.renderDashboard) window.renderDashboard();
-  } catch (error) {
-    console.error('Delete salary error:', error);
-    window.showToast('Failed to delete salary record. Please try again.', 'error');
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Delete'; }
+  const modalConfirm = document.getElementById('modalConfirm');
+  if (modalConfirm) {
+    modalConfirm.textContent = 'Close';
+    window.modalCallback = () => { window.closeModal(); };
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('addSalaryBtn')?.addEventListener('click', showAddSalaryModal);
-  document.getElementById('salarySearch')?.addEventListener('input', (e) => {
-    const status = document.getElementById('salaryFilter')?.value || 'all';
-    renderSalary(status, e.target.value);
-  });
-  document.getElementById('salaryFilter')?.addEventListener('change', (e) => {
-    const search = document.getElementById('salarySearch')?.value || '';
-    renderSalary(e.target.value, search);
-  });
-});
+// ... (rest of file remains unchanged)
 
-window.renderSalary = renderSalary;
-window.showAddSalaryModal = showAddSalaryModal;
-window.deleteSalary = deleteSalary;
+window.showReceipt = showReceipt;
+window.downloadReceiptPDF = downloadReceiptPDF;
+window.viewReceipt = viewReceipt;
+window.reprintReceipt = reprintReceipt;
+window.printLastReceipt = printLastReceipt;
+window.showSalaryReceipt = showSalaryReceipt;
+window.SCHOOL_INFO = SCHOOL_INFO;

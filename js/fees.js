@@ -8,23 +8,56 @@ import { createData, updateData, deleteData } from './firebase.js';
 // HELPERS
 // ============================================================
 
-function generateReceiptNumber(prefix = 'RCP') {
-  return `${prefix}-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+function getMonthlyFeeAmount(classNum) {
+  return classNum >= 1 && classNum <= 5 ? 500 : 800;
 }
 
-async function createPaymentFromFee(fee, method = 'N/A') {
-  const payment = {
-    studentId: fee.studentId,
-    receiptNo: fee.receiptNo || generateReceiptNumber('PAY'),
-    date: new Date().toISOString().split('T')[0],
-    month: new Date().toLocaleString('default', { month: 'long' }),
-    amount: fee.paid,
-    method: method,
-    status: fee.status
-  };
-  const result = await createData('payments', payment);
-  window.PAYMENTS.push(result);
-  return result;
+function getCurrentMonthYear() {
+  const now = new Date();
+  return { month: now.toLocaleString('default', { month: 'long' }), year: now.getFullYear() };
+}
+
+function getMonthYearFromFilter() {
+  const month = document.getElementById('feeMonthFilter')?.value || 'all';
+  const year = new Date().getFullYear(); // assume current year for now
+  return { month, year };
+}
+
+function generateMonthlyFees() {
+  const students = window.STUDENTS || [];
+  const existingFees = window.FEE_RECORDS || [];
+  const { month, year } = getCurrentMonthYear();
+  let created = 0;
+
+  students.forEach(student => {
+    // Check if monthly fee already exists for this student for this month/year
+    const exists = existingFees.some(f =>
+      f.studentId === student.id &&
+      f.feeType === 'Monthly Fee' &&
+      f.month === month &&
+      f.year === year
+    );
+    if (!exists) {
+      const amount = getMonthlyFeeAmount(student.class);
+      const newFee = {
+        studentId: student.id,
+        feeType: 'Monthly Fee',
+        amount,
+        paid: 0,
+        pending: amount,
+        status: 'pending',
+        month,
+        year
+      };
+      createData('feeRecords', newFee).then(result => {
+        window.FEE_RECORDS.push(result);
+        created++;
+      }).catch(err => console.error('Error creating monthly fee:', err));
+    }
+  });
+  if (created > 0) {
+    console.log(`Generated ${created} monthly fee records for ${month} ${year}.`);
+  }
 }
 
 // ============================================================
@@ -35,8 +68,15 @@ function renderFees(session = '2025-26', classFilter = 'all', monthFilter = 'all
   const fees = window.FEE_RECORDS || [];
   const students = window.STUDENTS || [];
 
+  // Ensure all fees have month/year for filtering (fallback for old records)
+  fees.forEach(f => {
+    if (!f.month) f.month = 'January';
+    if (!f.year) f.year = new Date().getFullYear();
+  });
+
   let list = fees;
 
+  // Apply filters
   if (statusFilter !== 'all') {
     list = list.filter(f => f.status === statusFilter);
   }
@@ -62,12 +102,10 @@ function renderFees(session = '2025-26', classFilter = 'all', monthFilter = 'all
     });
   }
   if (monthFilter !== 'all') {
-    list = list.filter(f => {
-      const payment = window.PAYMENTS.find(p => p.studentId === f.studentId && p.amount === f.amount && p.status === f.status && p.date);
-      if (!payment) return false;
-      return payment.month === monthFilter;
-    });
+    list = list.filter(f => f.month === monthFilter);
   }
+  // Session filter – placeholder (no session field in fee records yet)
+  // We can use year if needed
 
   list.sort((a, b) => {
     const nameA = students.find(s => s.id === a.studentId)?.name || '';
@@ -87,6 +125,14 @@ function renderFees(session = '2025-26', classFilter = 'all', monthFilter = 'all
     const student = students.find(s => s.id === f.studentId);
     const studentName = student ? student.name : 'Unknown';
     const studentClass = student ? `${student.class}${student.section}` : 'N/A';
+    const isPaid = f.status === 'paid';
+    // Determine if status should be overdue: if month is before current month and pending > 0
+    const { month: currentMonth, year: currentYear } = getCurrentMonthYear();
+    const isOverdue = !isPaid && (f.year < currentYear || (f.year === currentYear && getMonthIndex(f.month) < getMonthIndex(currentMonth)));
+    const displayStatus = isPaid ? 'paid' : (isOverdue ? 'overdue' : 'pending');
+    // Update status if it changed (we'll not modify the record here, just display)
+    // For action, we use the actual status
+
     return `
     <tr>
       <td>${idx + 1}</td>
@@ -96,17 +142,23 @@ function renderFees(session = '2025-26', classFilter = 'all', monthFilter = 'all
       <td>₹${(f.amount || 0).toLocaleString()}</td>
       <td>₹${(f.paid || 0).toLocaleString()}</td>
       <td>₹${(f.pending || 0).toLocaleString()}</td>
-      <td><span class="status-badge status-${f.status}">${f.status}</span></td>
+      <td><span class="status-badge status-${displayStatus}">${displayStatus}</span></td>
       <td>
         <div class="actions-cell">
-          <button class="btn-receipt" onclick="window.showReceipt('${f.id}')">Receipt</button>
-          <button class="btn-delete" onclick="window.deleteFee('${f.id}')">Delete</button>
+          <button class="btn-receipt" onclick="window.showReceipt('${f.id}')" ${isPaid ? '' : 'disabled'}>Receipt</button>
+          <button class="btn-delete" onclick="window.deleteFee('${f.id}')" ${isPaid ? '' : 'disabled'}>Delete</button>
+          ${!isPaid ? `<button class="btn-primary" onclick="window.payFee('${f.id}')" style="background:var(--primary); color:white; padding:0.2rem 0.6rem; border-radius:var(--radius); border:none; font-size:0.75rem;">Pay</button>` : ''}
         </div>
       </td>
     </tr>
   `}).join('');
 
   renderFeeAnalytics();
+}
+
+function getMonthIndex(month) {
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  return months.indexOf(month);
 }
 
 // ============================================================
@@ -116,25 +168,13 @@ function renderFees(session = '2025-26', classFilter = 'all', monthFilter = 'all
 function renderFeeAnalytics() {
   const grid = document.getElementById('feeAnalyticsGrid');
   if (!grid) return;
-
   const payments = window.PAYMENTS || [];
   const fees = window.FEE_RECORDS || [];
 
   const today = new Date().toDateString();
-  const todayCollection = payments
-    .filter(p => new Date(p.date).toDateString() === today)
-    .reduce((sum, p) => sum + (p.amount || 0), 0);
-
-  const currentMonth = new Date().getMonth();
-  const currentYear = new Date().getFullYear();
-  const monthCollection = payments
-    .filter(p => new Date(p.date).getMonth() === currentMonth && new Date(p.date).getFullYear() === currentYear)
-    .reduce((sum, p) => sum + (p.amount || 0), 0);
-
-  const annualCollection = payments
-    .filter(p => new Date(p.date).getFullYear() === currentYear)
-    .reduce((sum, p) => sum + (p.amount || 0), 0);
-
+  const todayCollection = payments.filter(p => new Date(p.date).toDateString() === today).reduce((sum, p) => sum + (p.amount || 0), 0);
+  const monthCollection = payments.filter(p => new Date(p.date).getMonth() === new Date().getMonth()).reduce((sum, p) => sum + (p.amount || 0), 0);
+  const annualCollection = payments.filter(p => new Date(p.date).getFullYear() === new Date().getFullYear()).reduce((sum, p) => sum + (p.amount || 0), 0);
   const pendingFees = fees.reduce((sum, f) => sum + (f.pending || 0), 0);
   const totalReceipts = payments.length;
 
@@ -314,7 +354,7 @@ function openCollectFeeModal(studentId) {
 }
 
 // ============================================================
-// PROCESS PAYMENT
+// PROCESS PAYMENT (via Collect Fee modal)
 // ============================================================
 
 async function processFeePayment(studentId) {
@@ -329,8 +369,8 @@ async function processFeePayment(studentId) {
   if (btn) { btn.disabled = true; btn.textContent = 'Processing...'; }
 
   try {
-    const receiptNo = generateReceiptNumber('RCP');
-    // Create fee record
+    const receiptNo = `RCP-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+    // Create fee record (this is a new payment, not an update of existing fee)
     const newFee = {
       studentId: studentId,
       feeType: 'Payment',
@@ -338,12 +378,14 @@ async function processFeePayment(studentId) {
       paid: received,
       pending: 0,
       status: 'paid',
-      receiptNo: receiptNo
+      receiptNo: receiptNo,
+      month: new Date().toLocaleString('default', { month: 'long' }),
+      year: new Date().getFullYear()
     };
     const feeResult = await createData('feeRecords', newFee);
     window.FEE_RECORDS.push(feeResult);
 
-    // Create payment record
+    // Create payment history
     const payment = {
       studentId: studentId,
       receiptNo: receiptNo,
@@ -359,12 +401,92 @@ async function processFeePayment(studentId) {
     window.showToast('Payment processed successfully! Receipt: ' + receiptNo, 'success');
     window.closeModal();
     applyFeeFilters();
+    if (window.renderDashboard) window.renderDashboard();
   } catch (error) {
     console.error('Payment error:', error);
     window.showToast('Payment failed. Please try again.', 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Process Payment'; }
   }
+}
+
+// ============================================================
+// PAY FEE (for individual fee record)
+// ============================================================
+
+async function payFee(feeId) {
+  const fee = window.FEE_RECORDS.find(f => f.id === feeId);
+  if (!fee) {
+    window.showToast('Fee record not found', 'error');
+    return;
+  }
+
+  // Open a modal to enter payment amount
+  const modalHTML = `
+    <div class="form-group">
+      <label>Amount to Pay (₹)</label>
+      <input type="number" id="payAmount" value="${fee.pending}" min="1" max="${fee.pending}" step="1" style="width:100%; padding:0.5rem; border:1px solid var(--gray-200); border-radius:var(--radius);" />
+    </div>
+    <div class="form-group">
+      <label>Payment Method</label>
+      <select id="payPaymentMethod" style="width:100%; padding:0.5rem; border:1px solid var(--gray-200); border-radius:var(--radius);">
+        <option value="Cash">Cash</option>
+        <option value="Bank Transfer">Bank Transfer</option>
+        <option value="Cheque">Cheque</option>
+        <option value="Digital Wallet">Digital Wallet</option>
+      </select>
+    </div>
+  `;
+
+  window.openModal('Pay Fee', modalHTML, 'Pay', async () => {
+    const amountPaid = parseFloat(document.getElementById('payAmount').value);
+    const method = document.getElementById('payPaymentMethod').value;
+
+    if (isNaN(amountPaid) || amountPaid <= 0 || amountPaid > fee.pending) {
+      window.showToast('Please enter a valid amount (between 1 and ' + fee.pending + ')', 'error');
+      return;
+    }
+
+    const newPaid = (fee.paid || 0) + amountPaid;
+    const newPending = (fee.pending || 0) - amountPaid;
+    const newStatus = newPending === 0 ? 'paid' : 'pending';
+
+    const updated = {
+      paid: newPaid,
+      pending: newPending,
+      status: newStatus
+    };
+
+    try {
+      await updateData('feeRecords', feeId, updated);
+      const idx = window.FEE_RECORDS.findIndex(f => f.id === feeId);
+      if (idx !== -1) {
+        window.FEE_RECORDS[idx] = { ...window.FEE_RECORDS[idx], ...updated };
+      }
+
+      // Add payment history
+      const receiptNo = `RCP-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+      const payment = {
+        studentId: fee.studentId,
+        receiptNo: receiptNo,
+        date: new Date().toISOString().split('T')[0],
+        month: new Date().toLocaleString('default', { month: 'long' }),
+        amount: amountPaid,
+        method: method,
+        status: 'paid'
+      };
+      const payResult = await createData('payments', payment);
+      window.PAYMENTS.push(payResult);
+
+      window.showToast('Payment of ₹' + amountPaid + ' recorded successfully!', 'success');
+      window.closeModal();
+      applyFeeFilters();
+      if (window.renderDashboard) window.renderDashboard();
+    } catch (error) {
+      console.error('Pay fee error:', error);
+      window.showToast('Failed to process payment. Please try again.', 'error');
+    }
+  });
 }
 
 // ============================================================
@@ -422,52 +544,51 @@ function openBulkCollectModal() {
     </div>
     <div class="form-group"><label>Fee Type</label><input type="text" id="bulkFeeType" placeholder="e.g., Tuition" style="width:100%; padding:0.5rem; border:1px solid var(--gray-200); border-radius:var(--radius);" /></div>
     <div class="form-group"><label>Amount (₹)</label><input type="number" id="bulkAmount" placeholder="5000" style="width:100%; padding:0.5rem; border:1px solid var(--gray-200); border-radius:var(--radius);" /></div>
-    <button class="btn btn-primary" id="bulkCollectBtn" onclick="window.processBulkCollection()">Collect for All</button>
-  `, 'Cancel', () => { window.closeModal(); });
-}
-
-async function processBulkCollection() {
-  const classVal = parseInt(document.getElementById('bulkClass').value);
-  const section = document.getElementById('bulkSection').value;
-  const feeType = document.getElementById('bulkFeeType').value.trim();
-  const amount = parseFloat(document.getElementById('bulkAmount').value);
-  const btn = document.getElementById('bulkCollectBtn');
-
-  if (!feeType || isNaN(amount) || amount <= 0) {
-    window.showToast('Please fill all fields correctly', 'error');
-    return;
-  }
-
-  if (btn) { btn.disabled = true; btn.textContent = 'Processing...'; }
-
-  const students = window.STUDENTS.filter(s => s.class === classVal && s.section === section);
-  let successCount = 0;
-  let errorCount = 0;
-
-  for (const s of students) {
-    try {
-      const newFee = {
-        studentId: s.id,
-        feeType: feeType,
-        amount: amount,
-        paid: 0,
-        pending: amount,
-        status: 'pending'
-      };
-      const result = await createData('feeRecords', newFee);
-      window.FEE_RECORDS.push(result);
-      successCount++;
-    } catch (error) {
-      console.error(`Error adding fee for ${s.name}:`, error);
-      errorCount++;
+  `, 'Collect for All', async () => {
+    const classVal = parseInt(document.getElementById('bulkClass').value);
+    const section = document.getElementById('bulkSection').value;
+    const feeType = document.getElementById('bulkFeeType').value.trim();
+    const amount = parseFloat(document.getElementById('bulkAmount').value);
+    const btn = document.querySelector('#modal .btn-primary');
+    if (!feeType || isNaN(amount) || amount <= 0) {
+      window.showToast('Please fill all fields correctly', 'error');
+      return;
     }
-  }
 
-  if (btn) { btn.disabled = false; btn.textContent = 'Collect for All'; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Processing...'; }
 
-  window.closeModal();
-  window.showToast(`Added ${successCount} records${errorCount > 0 ? `, ${errorCount} failed` : ''}`, errorCount > 0 ? 'error' : 'success');
-  applyFeeFilters();
+    const students = window.STUDENTS.filter(s => s.class === classVal && s.section === section);
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const s of students) {
+      try {
+        const newFee = {
+          studentId: s.id,
+          feeType: feeType,
+          amount: amount,
+          paid: 0,
+          pending: amount,
+          status: 'pending',
+          month: new Date().toLocaleString('default', { month: 'long' }),
+          year: new Date().getFullYear()
+        };
+        const result = await createData('feeRecords', newFee);
+        window.FEE_RECORDS.push(result);
+        successCount++;
+      } catch (error) {
+        console.error(`Error adding fee for ${s.name}:`, error);
+        errorCount++;
+      }
+    }
+
+    if (btn) { btn.disabled = false; btn.textContent = 'Collect for All'; }
+
+    window.closeModal();
+    window.showToast(`Added ${successCount} records${errorCount > 0 ? `, ${errorCount} failed` : ''}`, errorCount > 0 ? 'error' : 'success');
+    applyFeeFilters();
+    if (window.renderDashboard) window.renderDashboard();
+  });
 }
 
 // ============================================================
@@ -488,20 +609,27 @@ function applyFeeFilters() {
 // ============================================================
 
 function initFeeModule() {
+  // Generate monthly fees for current month if missing
+  generateMonthlyFees();
+
   renderFeeAnalytics();
   setupFeeSearch();
 
+  // Auto-apply on filter change
   const filters = ['feeSession', 'feeClassFilter', 'feeMonthFilter', 'feeStatusFilter'];
   filters.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', applyFeeFilters);
   });
 
+  // Bulk collect
   const bulkBtn = document.getElementById('feeCollectBulkBtn');
   if (bulkBtn) bulkBtn.addEventListener('click', openBulkCollectModal);
 
+  // Add Fee
   document.getElementById('addFeeBtn').addEventListener('click', showAddFeeModal);
 
+  // Search input
   const searchInput = document.getElementById('feeUniversalSearch');
   if (searchInput) {
     searchInput.addEventListener('input', applyFeeFilters);
@@ -509,7 +637,7 @@ function initFeeModule() {
 }
 
 // ============================================================
-// ADD FEE (with payment creation if paid > 0)
+// ADD FEE (simplified)
 // ============================================================
 
 function showAddFeeModal() {
@@ -525,13 +653,6 @@ function showAddFeeModal() {
       <label>Custom Fee Description</label><input type="text" id="addCustomFee" placeholder="Enter custom fee description" />
     </div>
     <div class="form-group"><label>Amount (₹)</label><input type="number" id="addFeeAmount" placeholder="5000" /></div>
-    <div class="form-group"><label>Paid (₹)</label><input type="number" id="addFeePaid" placeholder="0" /></div>
-    <div class="form-group"><label>Pending (₹)</label><input type="number" id="addFeePending" placeholder="0" /></div>
-    <div class="form-group"><label>Status</label>
-      <select id="addFeeStatus">
-        <option value="paid">Paid</option><option value="pending">Pending</option><option value="overdue">Overdue</option>
-      </select>
-    </div>
   `;
 
   window.openModal('Add Fee Record', modalHTML, 'Add Fee', async () => {
@@ -545,55 +666,23 @@ function showAddFeeModal() {
       finalFeeType = custom;
     }
     const amount = parseFloat(document.getElementById('addFeeAmount').value);
-    const paid = parseFloat(document.getElementById('addFeePaid').value) || 0;
-    const pending = parseFloat(document.getElementById('addFeePending').value) || 0;
-    const status = document.getElementById('addFeeStatus').value;
-
     if (isNaN(amount) || amount <= 0) {
       window.showToast('Please enter a valid amount', 'error');
       return;
     }
-    if (paid < 0 || pending < 0) {
-      window.showToast('Paid and Pending cannot be negative', 'error');
-      return;
-    }
-    if (paid + pending !== amount) {
-      window.showToast('Paid + Pending must equal Amount', 'error');
-      return;
-    }
-
-    let receiptNo = '';
-    let paymentMethod = 'Cash'; // default for manually added fees
-
     const newFee = {
       studentId,
       feeType: finalFeeType,
       amount,
-      paid,
-      pending,
-      status,
-      receiptNo: paid > 0 ? generateReceiptNumber('RCP') : ''
+      paid: 0,
+      pending: amount,
+      status: 'pending',
+      month: new Date().toLocaleString('default', { month: 'long' }),
+      year: new Date().getFullYear()
     };
-
-    const feeResult = await createData('feeRecords', newFee);
-    window.FEE_RECORDS.push(feeResult);
-
-    // If the fee is paid (paid > 0), create a corresponding payment record
-    if (paid > 0) {
-      const payment = {
-        studentId,
-        receiptNo: newFee.receiptNo,
-        date: new Date().toISOString().split('T')[0],
-        month: new Date().toLocaleString('default', { month: 'long' }),
-        amount: paid,
-        method: paymentMethod,
-        status: status
-      };
-      const payResult = await createData('payments', payment);
-      window.PAYMENTS.push(payResult);
-    }
-
-    window.showToast('Fee record added' + (paid > 0 ? ' and payment created' : ''), 'success');
+    const result = await createData('feeRecords', newFee);
+    window.FEE_RECORDS.push(result);
+    window.showToast('Fee record added', 'success');
     applyFeeFilters();
     if (window.renderDashboard) window.renderDashboard();
     window.closeModal();
@@ -613,7 +702,7 @@ function showAddFeeModal() {
 }
 
 // ============================================================
-// DELETE FEE (with payment cleanup)
+// DELETE FEE (with associated payment cleanup)
 // ============================================================
 
 async function deleteFee(id) {
@@ -625,22 +714,15 @@ async function deleteFee(id) {
     return;
   }
 
-  // Find associated payment: if fee type is 'Payment' or if paid > 0
+  // If fee type is 'Payment', also delete associated payment record
   let paymentToDelete = null;
-  if (fee.feeType === 'Payment' || fee.paid > 0) {
-    // Try to find a matching payment by receiptNo or by studentId+amount+date
-    if (fee.receiptNo) {
-      paymentToDelete = window.PAYMENTS.find(p => p.receiptNo === fee.receiptNo);
-    }
-    if (!paymentToDelete) {
-      // Fallback: match by studentId, amount, and date (approx)
-      const todayStr = new Date().toISOString().split('T')[0];
-      paymentToDelete = window.PAYMENTS.find(p =>
-        p.studentId === fee.studentId &&
-        p.amount === fee.paid &&
-        p.date === todayStr // simple fallback; might be improved
-      );
-    }
+  if (fee.feeType === 'Payment') {
+    paymentToDelete = window.PAYMENTS.find(p =>
+      p.studentId === fee.studentId &&
+      p.amount === fee.amount &&
+      p.status === fee.status &&
+      new Date(p.date).toDateString() === new Date().toDateString()
+    );
   }
 
   try {
@@ -668,6 +750,7 @@ window.renderFees = renderFees;
 window.initFeeModule = initFeeModule;
 window.showAddFeeModal = showAddFeeModal;
 window.deleteFee = deleteFee;
+window.payFee = payFee;
 window.showStudentDetail = showStudentDetail;
 window.openCollectFeeModal = openCollectFeeModal;
 window.processFeePayment = processFeePayment;
